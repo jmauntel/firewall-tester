@@ -1,0 +1,220 @@
+#!/bin/bash
+
+# ====================
+# Initialize variables
+# ====================
+
+# firewall-tester version number
+
+typeset -r version='0.1.0'
+
+# Collect the current time to use for test duration calculation
+
+typeset -r startTime=$(date +%s)
+
+# Define output color variables
+
+typeset NORMAL='\033[0m'
+typeset RED='\033[1;31;40m'
+typeset GREEN='\033[1;32;40m'
+typeset YELLOW='\033[1;33;40m'
+typeset ORANGE='\033[1;38;130m'
+
+# Maximum number of seconds to wait for curl to successfully connect to a 
+# remote host
+
+typeset -r connectTimeout="3"
+
+# Set the default user agent.  This is necessary if the site is using an 
+# ASM for content blocking, or if the iRule logic uses user agent data to 
+# decide how to route traffic.
+
+typeset -r userAgent='Firewall-Tester'
+
+# Base curl command.  Leverages -s (silent mode), -S (show errors even 
+# when asked to be silent), and -A (user agent).
+
+typeset -r curlCmd="/usr/bin/curl -s -S --connect-timeout ${connectTimeout} -A ${userAgent} -m ${connectTimeout}"
+
+# Base nc command.  Leverages -w (connection timeout)
+
+typeset -r ncCmd="/usr/bin/nc -w ${connectTimeout}"
+
+# Base ssh command.
+
+typeset -r sshCmd="/usr/bin/ssh"
+
+
+# Initialize the counters for the number of passing, warning, and failed 
+# test cases.  These variables will increment during the test, and therefore
+# must me overidable.
+
+typeset passCount='0'
+typeset warnCount='0'
+typeset failCount='0'
+
+typeset targetEnv=$(echo $1 | tr [a-z] [A-Z])
+
+# =====================================
+# Parse and validate supplied arguments
+# =====================================
+
+[[ -z $targetEnv ]] && {
+  printf "\n%s\n\n" "ERROR: Failed to supply a target environment" >&2
+  printf "%s\n\n" "Usage: $0 <target-environment>" >&2
+  exit 1
+}
+
+# exits 0 if the target environment matches
+function PRD {
+  [[ -n $targetEnv ]] && [[ $targetEnv == 'PRD' ]] && true
+}
+
+# exits 0 if the target environment matches
+function TRN {
+  [[ -n $targetEnv ]] && [[ $targetEnv == 'TRN' ]] && true
+}
+
+# exits 0 if the target environment matches
+function QA {
+  [[ -n $targetEnv ]] && [[ $targetEnv == 'QA' ]] && true
+}
+
+# exits 0 if the target environment matches
+function INT {
+  [[ -n $targetEnv ]] && [[ $targetEnv == 'INT' ]] && true
+}
+
+# exits 0 if the target environment matches
+function DEV {
+  [[ -n $targetEnv ]] && [[ $targetEnv == 'DEV' ]] && true
+}
+
+# exits 0 if the target environment matches
+function P2DEV {
+  [[ -n $targetEnv ]] && [[ $targetEnv == 'P2DEV' ]] && true
+}
+
+function test_fw_port {
+
+  local srcNode=$1
+  local dstNode=$2
+  local dstPort=$3
+  local desc=$4
+
+  $sshCmd ${srcNode} "$ncCmd -z ${dstNode} ${dstPort}" >/dev/null && {
+    ((passCount++))
+    printMsg "INFO" "${srcNode} to ${dstNode} on port ${dstPort} ($FUNCNAME)" 
+  } || {
+    ((failCount++))
+    printMsg "ERROR" "${srcNode} to ${dstNode} on port ${dstPort} ($FUNCNAME)" 
+  }
+}
+
+function test_fw_full {
+
+  local srcNode=$1
+  local dstNode=$2
+  local dstPort=$3
+
+  $sshCmd ${srcNode} "$ncCmd ${dstNode} ${dstPort}" >/dev/null && {
+    ((passCount++))
+    printMsg "INFO" "${srcNode} to ${dstNode} on port ${dstPort} ($FUNCNAME)"
+  } || {
+    ((failCount++))
+    printMsg "ERROR" "${srcNode} to ${dstNode} on port ${dstPort} ($FUNCNAME)"
+  }
+}
+
+function test_url {
+
+  local srcNode=$1
+  local dstUrl=$2
+
+  echo $dstUrl | grep -q '^http' || dstUrl="http://$dstUrl"
+
+  $sshCmd ${srcNode} "$curlCmd ${dstUrl}" >/dev/null 2>&1 && {
+    ((passCount++))
+    printMsg "INFO" "${srcNode} to ${dstUrl} ($FUNCNAME)"
+  } || {
+    ((failCount++))
+    printMsg "ERROR" "${srcNode} to ${dstUrl} ($FUNCNAME)"
+  }
+}
+
+function report_results {
+
+  local totalTests=$(expr $passCount + $warnCount + $failCount)
+
+  [[ $failCount -gt 0 ]] && {
+    printMsg "FAILREPORT" "Pass: $passCount, Warn: $warnCount, Fail: $failCount, Total: $totalTests"
+  } || {
+    printMsg "PASSREPORT" "Pass: $passCount, Warn: $warnCount, Fail: $failCount, Total: $totalTests"
+  }
+
+  local endTime=$(date +%s)
+  printMsg "PASSREPORT" "Test took $(( $endTime - $startTime )) seconds"
+
+}
+
+function printMsg {
+
+  msgType=$1
+  testCase=$2
+  msg=$3
+
+  [[ "$msgType" == 'FAILREPORT' ]] && {
+    printf "\n${RED}%s${NORMAL}\n" "$2"
+    return
+  }
+
+  [[ "$msgType" == 'PASSREPORT' ]] && {
+    printf "\n${GREEN}%s${NORMAL}\n" "$2"
+    return
+  }
+
+  [[ "$msgType" == 'HEADER' ]] && {
+    printf "${NORMAL}\n\t%s\n\n${NORMAL}" "$2"
+    [[ "$outputFormat" == "tap" ]] && echo "1..2"
+    return
+  }
+
+  # Output format specifically for TAP (Test Anything Protocol)
+  [[ "$outputFormat" == 'tap' ]] && {
+
+    [[ "$msgType" == 'ERROR' ]] && {
+      printf "${RED}not ok - %s${NORMAL}\n" "$testCase"
+      return
+    }
+
+    [[ "$msgType" == 'WARN' ]] && {
+      printf "${ORANGE}not ok - #SKIP %s %s\n${NORMAL}" "$testCase" "$msg"
+      return
+    }
+
+    [[ "$msgType" == 'INFO' ]] && {
+      printf "${NORMAL}ok - %s - %s\n${NORMAL}" "$testCase" "$msg"
+      return
+    }
+
+  } || {
+
+    # Default output format
+    [[ "$msgType" == 'ERROR' ]] && {
+      printf "${RED}F - %s${NORMAL}\n" "$testCase"
+      return
+    }
+
+    [[ "$msgType" == 'WARN' ]] && {
+      printf "${ORANGE}W - %s${NORMAL}\n" "$testCase"
+      return
+    }
+
+    [[ "$msgType" == 'INFO' ]] && {
+      printf "${NORMAL}P - %s${NORMAL}\n" "$testCase"
+      return
+    }
+
+  }
+
+}
