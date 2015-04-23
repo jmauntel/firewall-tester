@@ -14,10 +14,10 @@ QA  && test_url web-qa-01.acme.com  https://acmeapp-qa.acme.com
 PRD && test_url web-prd-01.acme.com https://acmeapp-prd.acme.com 
 
 # From Acme App Server to Acme DB Server
-DEV && test_fw_full app-dev-01 acme-dev-db.acme.com 1521 
-INT && test_fw_full app-int-01 acme-int-db.acme.com 1521 
-QA  && test_fw_full app-qa-01  acme-qa-db.acme.com  1521 
-PRD && test_fw_full app-prd-01 acme-prd-db.acme.com 1521
+DEV && test_fw_full app-dev-01.acme.com acme-dev-db.acme.com 1521 
+INT && test_fw_full app-int-01.acme.com acme-int-db.acme.com 1521 
+QA  && test_fw_full app-qa-01.acme.com  acme-qa-db.acme.com  1521 
+PRD && test_fw_full app-prd-01.acme.com acme-prd-db.acme.com 1521
 
 # ----- REPORT TEST RESULTS -----
 
