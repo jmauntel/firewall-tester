@@ -14,8 +14,11 @@ Has 3 tests
 
 Each line in the application script requires an environment designation and then the test command.  The environment designation is really a function that executes successfully if the environment matches the environment passed to the script.  This feature allows you to test individual environments.
 
-Test example:
-  DEV && test_fw_full web-dev-01.acme.com app-dev-01.acme.com 8080
+Test example:  
+
+```
+DEV && test_fw_full web-dev-01.acme.com app-dev-01.acme.com 8080
+```
 
 Script execution example:
 
