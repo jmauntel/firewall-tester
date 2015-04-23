@@ -38,6 +38,10 @@ General guidlines:
 3. Assuming that tiers are configured identically, you only need to test first node in tier  
 4. Always commit changes to version control   
 
+## Requirements
+
+* A user account that has access to SSH via key-based authentication to all of the source systems defined in the test script
+
 ## Supported Platforms
 
 This code was developed and tested using CentOS 5, but is assumed to work
